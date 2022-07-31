@@ -1,0 +1,153 @@
+<div id='container'>
+	<canvas id='gameboard' width='600' height='480' style='cursor: grab;'/>
+</div>
+<script>
+    document.addEventListener('click', input)
+
+	//canvas elements
+	const container = document.getElementById('container')
+    const canvas = document.getElementById('gameboard')
+    var c = canvas.getContext('2d')
+    var cw = canvas.width, ch = canvas.height
+	
+	//uninitialized variables (MUST BE INITIALIZED IN INIT)
+	var arrdata, analyser, context, buffl, gamestarted, delay, tick, score, difficulty, combo
+	
+	//game elements
+	var song = 'sand'
+	var title = 'nOtSU!'
+	var dscore = 'Score: '
+	var dcombo = 'Combo: '
+	var prev = 0
+	var notes = []
+	
+	//audio stuff
+	var audio = new Audio()
+	audio.src = './audio/'+song+'.mp3'
+	audio.volume = .15
+	
+	draw()
+	
+    function init(){
+		//initializes all audio stuff --- NEEDS TO HAPPEN ON A TRIGGER
+		audio.play()
+		context = new AudioContext()
+		audio_s = context.createMediaElementSource(audio)
+		analyser = context.createAnalyser()
+		audio_s.connect(analyser)
+		analyser.connect(context.destination)
+		analyser.fftSize = 32
+		buffl = analyser.frequencyBinCount
+		arrdata = new Uint8Array(buffl)
+		
+		//configures game state variables
+		gamestarted = true
+		delay = 22, tick = 0, score = 0, difficulty = 6, combo = 0
+		
+		//draw the game
+		draw()
+    }
+	
+    function input(e){
+		gamestarted ? collides(e.x, e.y) : init()
+    }
+
+    function update(){
+		tick++
+		analyser.getByteFrequencyData(arrdata)
+		//temp = arrdata.filter(e=>e!=0) for a different pattern remove the 0's
+		var avg = 0
+		arrdata.map(e => avg += e)
+		avg /= arrdata.length
+		if(Math.abs(avg - prev) > difficulty) 
+			notes = [...notes, 
+				[
+					parseInt(Math.random() * 500) + 50, 
+					parseInt(Math.random() * 380) + 50, 
+					parseInt(Math.random() * 50) + 75] 
+				]
+		prev = avg
+		
+    }
+
+    function draw(){
+		//check game state
+		if(gamestarted) {
+			update() //update the game
+			if(tick++ >= delay){ //draw game at tick rate to slow down effects visually
+				tick = 0	//reset tick
+				//fill screen
+				c.fillStyle = '#101010'
+				c.fillRect(0, 0, cw, ch)
+				
+				//visualizer bar(s)
+				c.fillStyle = '#141414'
+				var left = 0, right=cw, top = 0, bottom = ch, width = cw / 16, b = 5;
+				left -= width
+				top -= width
+				for(var i = 0; i < arrdata.length; i++){
+					height = arrdata[i] * 1.25
+					c.beginPath()
+					c.rect(left+=width+b, ch - height, width, height) 	//bottom
+					c.rect(right-=width+b, 0, width, height)			//top
+					c.rect(0, top+=width+5, height, width) 				//left
+					c.rect(cw - height, bottom-=width+5, height, width) //right
+					c.fill()
+				}
+				
+				//notes
+				for(var i = notes.length - 1; i >= 0; i--) {
+					c.beginPath()
+					c.fillStyle = i == 0 ? '#ff33cc' : i == 1 ? '#ff66ffaa' : '#9933ffaa'
+					//c.fillStyle = '#' + Math.floor(Math.random()*16777215).toString(16) /* random color logic */
+					c.arc( notes[i][0], notes[i][1], notes[i][2] * (prev / 200), 0, 2 * Math.PI)
+					c.fill()
+					
+					//draw number
+					c.font = 32*(prev/120)+'px monospace'
+					c.fillStyle = combo >= 10 ? '#' + Math.floor(Math.random()*16777215).toString(16) : '#9933ff'
+					i==0&&c.fillText('pop!', notes[i][0] - c.measureText('pop!').width / 2, notes[i][1] + c.measureText('pop!').width / 5)
+					
+				}
+				
+				//combo text
+				c.beginPath()
+				c.font = (10 + (combo) * (combo >= 10 ? (prev/1000) : 1)) + 'px monospace'
+				c.fillStyle = combo >= 100 ? '#' + Math.floor(Math.random()*16777215).toString(16) + '66' : '#ffff00aa'
+				c.fillText( dcombo + combo, cw / 2 - c.measureText(dcombo + combo).width / 2, ch / 2 + c.measureText(dcombo + combo).width / 5 )
+				
+				//score text
+				c.beginPath()
+				c.font = '20px monospace'
+				c.fillStyle = 'brown'
+				c.fillText( dscore + score, cw / 2 - c.measureText(dscore + score).width / 2, ch - 20 )
+			}
+		} else {
+			//clear screen
+            c.fillStyle = 'black'
+            c.fillRect(0, 0, cw, ch)
+            c.fillStyle = 'yellow'
+			c.font = '64px monospace'
+			c.fillText(title, cw / 2 - c.measureText(title).width / 2, ch / 2 - 70 )
+			c.fillStyle = 'red'
+			c.font = '42px monospace'
+			c.fillText( "CLICK TO BEGIN", cw / 2 - c.measureText("CLICK TO BEGIN").width / 2, ch / 2 )
+		}
+		requestAnimationFrame(draw)
+    }
+
+    function collides(x, y){
+		//collision logic is super simple but can be changed to a more standard approach for different styles of collision logic / escape sequencing
+		//notes = notes.filter(e => !(e[0] - (e[2] * (prev / 100)) < x && e[0] + (e[2] * (prev / 100)) > x && e[1] - (e[2] * (prev / 100)) < y && e[1] + (e[2] * (prev / 100)) > y && score++))
+		
+		//proper collision
+		if (notes.length > 0 &&
+			notes[0][0] - notes[0][2]) < x && 
+			notes[0][0] + notes[0][2]) > x && 
+			notes[0][1] - notes[0][2]) < y && 
+			notes[0][1] + notes[0][2]) > y
+			) notes.shift()&&score++&&combo++
+			else combo = 0
+    }
+	
+</script>
